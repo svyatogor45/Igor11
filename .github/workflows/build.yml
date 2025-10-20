@@ -1,0 +1,33 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Find solution file
+        id: find
+        shell: pwsh
+        run: |
+          $sln = Get-ChildItem -Recurse -Filter *.sln | Select-Object -First 1
+          if (-not $sln) { throw "Файл .sln не найден" }
+          echo "sln=$($sln.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Build Release x64
+        shell: pwsh
+        run: |
+          & msbuild.exe "${{ steps.find.outputs.sln }}" /p:Configuration=Release /p:Platform=x64
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: program
+          path: |
+            **/x64/Release/*.exe
+            **/Release/*.exe
+          if-no-files-found: error
