@@ -2,34 +2,56 @@ name: Build Windows EXE
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build.yml'
+      - '**/*.sln'
+      - '**/*.vcxproj'
+      - '**/*.cpp'
+      - '**/*.h'
 
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find solution file
+      - name: Install MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Find solution or cpp file
         id: find
         shell: pwsh
         run: |
           $sln = Get-ChildItem -Recurse -Filter *.sln | Select-Object -First 1
-          if (-not $sln) { throw "Файл .sln не найден" }
-          echo "sln=$($sln.FullName)" >> $env:GITHUB_OUTPUT
+          if ($sln) {
+            echo "type=sln" >> $env:GITHUB_OUTPUT
+            echo "path=$($sln.FullName)" >> $env:GITHUB_OUTPUT
+          } else {
+            $cpp = Get-ChildItem -Recurse -Filter *.cpp | Select-Object -First 1
+            if (-not $cpp) { throw "Не найден ни .sln, ни .cpp файл!" }
+            echo "type=cpp" >> $env:GITHUB_OUTPUT
+            echo "path=$($cpp.FullName)" >> $env:GITHUB_OUTPUT
+          }
 
-      - name: Build Release x64
+      - name: Build project
         shell: pwsh
         run: |
-          & msbuild.exe "${{ steps.find.outputs.sln }}" /p:Configuration=Release /p:Platform=x64
+          if ("${{ steps.find.outputs.type }}" -eq "sln") {
+            & msbuild.exe "${{ steps.find.outputs.path }}" /p:Configuration=Release /p:Platform=x64
+          } else {
+            $exe = (Split-Path "${{ steps.find.outputs.path }}" -LeafBase) + ".exe"
+            & g++ "${{ steps.find.outputs.path }}" -O2 -std=c++17 -o "$exe"
+          }
 
-      - name: Upload EXE
+      - name: Upload built EXE
         uses: actions/upload-artifact@v4
         with:
-          name: program
+          name: built-program
           path: |
             **/x64/Release/*.exe
-            **/Release/*.exe
-          if-no-files-found: error
+            **/*.exe
+          if-no-files-found: warn
 
-          
